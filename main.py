@@ -6,6 +6,7 @@ from langgraph.types import Command
 from agents.itinerary import itinerary_agent
 from agents.data_retrieval import data_retrieval_agent
 from agents.calendar import calendar_agent
+from agents.query_checker import query_checker_module
 from config import llm  # Import the shared llm from config.py
 
 class State(TypedDict):
@@ -15,6 +16,7 @@ class State(TypedDict):
     #data_fetched: bool
     message_list : list
     fetched_data : str
+    query : str
 
 # # Creating the Agent Nodes
 
@@ -37,7 +39,13 @@ def itinerary_node(state: State) -> Command[Literal['chatbot']]:
 
      return Command(goto='chatbot',update={"next":"chatbot","message_list":new_lst})
 
+def query_checker_node(state: State) -> Command[Literal['chatbot']]:
+    
+    result = query_checker_module(state["message_list"])
 
+    new_lst = state["message_list"]+ [("ai", "query_checker_module : " + "query built successfully, proceed to next steps")]
+
+    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst,"query":result}) 
 
 def calendar_node(state: State) -> Command[Literal['chatbot']]:
 
@@ -75,12 +83,11 @@ Your Responsibilities:
    - Data retrieval for travel details (e.g., restaurants, flights, attractions)
    - Itinerary planning
 
-2. Gather Preferences & Constraints: Ask the user about their travel preferences, such as:
-   - Destination
-   - Trip origin
-   - Travel dates
-   - Budget
-   - Preferences for activities, restaurants, or accommodations
+2. Query Construction : Before moving forward, gather essential details for building a travel query. You will ask the user for:
+   - Departure location(required)
+   - Destination(required)
+   - Budget(optional)
+   - Preferences (optional: activities, accommodations, food, etc.)
 
 3. Information Collection:
    Inquire about specific details that are required for each agent as follows:
@@ -112,12 +119,12 @@ Communication Style:
 Example Workflow:
 1. **Chatbot**: "Hello! I'm here to help you plan your perfect trip. Could you please share your preferred destinations and travel dates?"
 2. **User**: "I'm traveling to New Jersey from March 10 to March 17."
-3. **Chatbot**: "Let me check your calendar for any conflicts with these dates..."
-4. **calendar_agent**: [Checks user’s Google Calendar for conflicts]
-5. **Chatbot**: "I see that you have a meeting on March 12 at 3 PM. Would you like to adjust your travel dates or keep this event?"
-6. **User**: "I'll keep it, but please add a reminder."
-7. **Chatbot**: "Noted! Now, could you share your budget and preferences for activities, restaurants, or accommodations?"
-8. **User**: [Provides details]
+3. **Chatbot**: "Noted! Now, could you share your budget and preferences for activities, restaurants, or accommodations?"
+4. **User**: [Provides details]
+5. **Chatbot**: "Let me check your calendar for any conflicts with these dates..."
+6. **calendar_agent**: [Checks user’s Google Calendar for conflicts]
+7. **Chatbot**: "I see that you have a meeting on March 12 at 3 PM. Would you like to adjust your travel dates or keep this event?"
+8. **User**: "I'll keep it, but please add a reminder."
 9. **Chatbot**: [Routes to `data_retrieval_agent` to fetch relevant data]
 10. **data_retrieval_agent**: [Fetches data: restaurants, flight information, and local attractions in New Jersey]
 11. **Chatbot**: "I’ve gathered all the details! Now I’m creating your personalized itinerary. Just a moment."
@@ -136,7 +143,7 @@ class Router(TypedDict):
     next: Literal['itinerary_agent','human_interrupt','calendar_agent','data_retrieval_agent','FINISH']
     messages:str
 
-def chatbot_node(state:State) -> Command[Literal['human_interrupt','calendar_agent','itinerary_agent','data_retrieval_agent','__end__']] :
+def chatbot_node(state:State) -> Command[Literal['human_interrupt','query_checker_module','calendar_agent','itinerary_agent','data_retrieval_agent','__end__']] :
     messages = [
         {"role": "system","content":chatbot_prompt}
     ] + state["message_list"]
@@ -149,6 +156,9 @@ def chatbot_node(state:State) -> Command[Literal['human_interrupt','calendar_age
 
     if goto == "FINISH":
          goto = END
+
+    if goto == "data_retrieval_agent" and state["query"]=="":
+         goto = "query_checker_module"     
          
     return Command(goto=goto,update={"next": goto,"message_list": new_lst})       
 
@@ -161,6 +171,7 @@ builder.add_node("itinerary_agent", itinerary_node)
 builder.add_node("data_retrieval_agent", data_retrieval_node)
 builder.add_node("calendar_agent", calendar_node)
 builder.add_node("human_interrupt", human_interrupt)
+builder.add_node("query_checker_module",query_checker_node)
 
 # Compile the graph
 graph = builder.compile()
@@ -169,21 +180,26 @@ graph = builder.compile()
 initial_state = {
     "message_list": [("user", "Hi")],
     "fetched_data": "",
+    "query":""
 }
 
+import pprint
 # Start the graph stream to trigger the flow
-for s in graph.stream(initial_state,subgraphs=True):
-        """
-        message_data = s[1]  # Access the second element of the tuple
-        print(f"Next action: {message_data.get('next')}")
+for s in graph.stream(initial_state,subgraphs=True,stream_mode="values"):
+        
+        print(s)
+        #message_data = s[1]  # Access the second element of the tuple
+        #print(f"Next action: {message_data.get('next')}")
         #print(f"Message list: {message_data.get('message_list')}")
-        pprint.pprint(f"Last Message: {message_data.get('message_list')[-1]}")
+        #pprint.pprint(f"Last Message: {message_data.get('message_list')[-1]}")
         print("\n----\n")
         """
         for key, value in s[1].items():
-            if key in ['chatbot', 'itinerary_agent', 'data_retrieval_agent','calendar_agent']:
+            if key in ['chatbot', 'itinerary_agent', 'data_retrieval_agent','calendar_agent','query_builder_module']:
                 #print(value['messages'])
                 print(key)
                 print("next_node: " + value['next'])
                 print("message: " + value['message_list'][-1][1])
         print("----")
+
+        """
