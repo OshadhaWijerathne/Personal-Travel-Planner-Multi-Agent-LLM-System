@@ -1,15 +1,12 @@
-import os
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Get the API key
-api_key = os.getenv("API_KEY")
-
-llm = ChatOpenAI(model_name = "gpt-4o-mini",api_key=api_key)
+# main.py
+from langgraph.graph import StateGraph, START, END
 from typing_extensions import TypedDict
+from typing import Literal
+from langgraph.types import Command
+from agents.itinerary import itinerary_agent
+from agents.data_retrieval import data_retrieval_agent
+from agents.calendar import calendar_agent
+from config import llm  # Import the shared llm from config.py
 
 class State(TypedDict):
     next: str
@@ -19,87 +16,54 @@ class State(TypedDict):
     message_list : list
     fetched_data : str
 
+# # Creating the Agent Nodes
 
-# # Creating Agents    
+def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
+    
+    state["fetched_data"] += str(data_retrieval_agent()) 
 
+    result = "data retrieved which are needed for itinerary agent"
 
-# # Data Retieval Agent
+    new_lst = state["message_list"]+ [("ai","data_retrieval_agent : " +  result)]
 
-import pandas as pd
+    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst}) 
 
-df = pd.read_csv("dataset_samples_20.csv")
+def itinerary_node(state: State) -> Command[Literal['chatbot']]:
+     
+     response = itinerary_agent(state["fetched_data"])
 
-def data_retrieval_agent():
-    return df["reference_information"][0]
+     #new_lst = state["message_list"].append(response.content)
+     new_lst = state["message_list"]+ [("ai", "itinerary_agent : " + response)]
 
-# # Calendar Agent
-
-from langgraph.types import Command
-from typing_extensions import TypedDict
-from typing import Literal
-
-def calendar_agent():
-    return "user given dates are avilable."
-
-def plan_prompt(query,text):
-
-    PLANNER_INSTRUCTION = f"""You are a proficient planner. Based on the provided information and query, please give me a detailed plan, including specifics such as flight numbers (e.g., F0123456), restaurant names, and accommodation names. Note that all the information in your plan should only be derived from the provided data. You must adhere to the format given in the example. Additionally, all details should align with commonsense. The symbol '-' indicates that information is unnecessary. For example, in the provided sample, you do not need to plan after returning to the departure city. When you travel to two cities in one day, you should note it in the 'Current City' section as in the example (i.e., from A to B).provide also the price of each item in the plan.
-
-    ***** Example *****
-    Query: Could you create a travel plan for 7 people from Ithaca to Charlotte spanning 3 days, from March 8th to March 14th, 2022, with a budget of $30,200?
-    Travel Plan:
-    Day 1:
-    Current City: from Ithaca to Charlotte
-    Transportation: Flight Number: F3633413, from Ithaca to Charlotte, Departure Time: 05:38, Arrival Time: 07:46 ($250)
-    Breakfast: Nagaland's Kitchen, Charlotte ($20)
-    Attraction: The Charlotte Museum of History, Charlotte
-    Lunch: Cafe Maple Street, Charlotte ($25)
-    Dinner: Bombay Vada Pav, Charlotte ($30)
-    Accommodation: Affordable Spacious Refurbished Room in Bushwick!, Charlotte ($150/night)
-
-    Day 2:
-    Current City: Charlotte
-    Transportation: -
-    Breakfast: Olive Tree Cafe, Charlotte ($15)
-    Attraction: The Mint Museum, Charlotte;Romare Bearden Park, Charlotte. 
-    Lunch: Birbal Ji Dhaba, Charlotte ($20)
-    Dinner: Pind Balluchi, Charlotte ($35)
-    Accommodation: Affordable Spacious Refurbished Room in Bushwick!, Charlotte ($150/night)
-
-    Day 3:
-    Current City: from Charlotte to Ithaca
-    Transportation: Flight Number: F3786167, from Charlotte to Ithaca, Departure Time: 21:42, Arrival Time: 23:26 ($250)
-    Breakfast: Subway, Charlotte ($10)
-    Attraction: Books Monument, Charlotte. 
-    Lunch: Olive Tree Cafe, Charlotte ($10)
-    Dinner: Kylin Skybar, Charlotte ($20)
-    Accommodation: -
-    ***** Example Ends *****
-
-    Query: {query}
-    Given information: {text}
-    Travel Plan:
-
-    """
-    return PLANNER_INSTRUCTION 
-
-def itinerary_agent(fetched_data):
-    query = "Please create a travel plan for me where I'll be departing from Washington and heading to Myrtle Beach for a 3-day trip from March 13th to March 15th, 2022. Can you help me keep this journey within a budget of $1,400?"
-    message = plan_prompt(query=query,text=fetched_data)
-    response = llm.invoke(message)
-
-    return response.content
-
-
-# # Supervising Chatbot
+     return Command(goto='chatbot',update={"next":"chatbot","message_list":new_lst})
 
 
 
-from langgraph.graph import END
-from langgraph.types import Command
-from typing_extensions import TypedDict
-from typing import Literal
+def calendar_node(state: State) -> Command[Literal['chatbot']]:
 
+    result = calendar_agent()
+
+    new_lst = state["message_list"]+ [("ai", "calendar_agent : " + result)]
+
+    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst})
+
+
+# # Human Input
+
+def human_interrupt(state: State) -> Command[Literal['chatbot']]:
+
+    #query = state['message_list'][-1].content
+
+    user_input = input("user: ")
+
+    new_lst = state["message_list"]+ [("user", user_input)]
+    
+    
+
+    return Command(goto='chatbot', update={"message_list":new_lst})
+
+
+## Chatbot
 
 chatbot_prompt = """
 You are a dedicated travel planning chatbot designed to create personalized and well-organized trips.
@@ -166,8 +130,6 @@ Example Workflow:
 18. **Chatbot**: "FINISH"
 """
 
-
-
 class Router(TypedDict):
     """Worker to route to next. If no workers needed, route to FINISH."""
 
@@ -190,82 +152,26 @@ def chatbot_node(state:State) -> Command[Literal['human_interrupt','calendar_age
          
     return Command(goto=goto,update={"next": goto,"message_list": new_lst})       
 
-
-# # Creating the Agent Nodes
-
-
-from langgraph.types import Command
-from typing_extensions import Literal
-
-def itinerary_node(state: State) -> Command[Literal['chatbot']]:
-     
-     response = itinerary_agent(state["fetched_data"])
-
-     #new_lst = state["message_list"].append(response.content)
-     new_lst = state["message_list"]+ [("ai", "itinerary_agent : " + response)]
-
-     return Command(goto='chatbot',update={"next":"chatbot","message_list":new_lst})
-
-def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
-    
-    state["fetched_data"] += str(data_retrieval_agent()) 
-
-    result = "data retrieved which are needed for itinerary agent"
-
-    new_lst = state["message_list"]+ [("ai","data_retrieval_agent : " +  result)]
-
-    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst})
-
-def calendar_node(state: State) -> Command[Literal['chatbot']]:
-
-    result = calendar_agent()
-
-    new_lst = state["message_list"]+ [("ai", "calendar_agent : " + result)]
-
-    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst})
-
-
-# # Human Input
-
-def human_interrupt(state: State) -> Command[Literal['chatbot']]:
-
-    #query = state['message_list'][-1].content
-
-    user_input = input("user: ")
-
-    new_lst = state["message_list"]+ [("user", user_input)]
-    
-    
-
-    return Command(goto='chatbot', update={"message_list":new_lst})
-
-
-# # Building the StateGraph
-
-from langgraph.graph import StateGraph,START
+# Initialize the state graph
 
 builder = StateGraph(State)
-builder.add_edge(START,"chatbot")
-builder.add_node("chatbot",chatbot_node)
-builder.add_node("itinerary_agent",itinerary_node)
-builder.add_node("data_retrieval_agent",data_retrieval_node)
-builder.add_node("calendar_agent",calendar_node)
-builder.add_node("human_interrupt",human_interrupt)
+builder.add_edge(START, "chatbot")
+builder.add_node("chatbot", chatbot_node)
+builder.add_node("itinerary_agent", itinerary_node)
+builder.add_node("data_retrieval_agent", data_retrieval_node)
+builder.add_node("calendar_agent", calendar_node)
+builder.add_node("human_interrupt", human_interrupt)
 
-#builder.add_edge("data_retrieval_agent","itinerary_agent")
-
-#builder.add_edge("chatbot","data_retrieval_agent",condition="user_query_finalized == True and calendar_checked == True")
-#builder.add_edge("chatbot","itinerary_agent",condition="user_query_finalized == True and calendar_checked == True and relevant_travel_database_info_fetched == True")
-#builder.add_conditional_edges('chatbot',)
-
+# Compile the graph
 graph = builder.compile()
 
+# Initial state for the conversation
 initial_state = {
     "message_list": [("user", "Hi")],
     "fetched_data": "",
 }
 
-
+# Start the graph stream to trigger the flow
 for s in graph.stream(initial_state,subgraphs=True):
         """
         message_data = s[1]  # Access the second element of the tuple
@@ -281,5 +187,3 @@ for s in graph.stream(initial_state,subgraphs=True):
                 print("next_node: " + value['next'])
                 print("message: " + value['message_list'][-1][1])
         print("----")
-
-        
