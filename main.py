@@ -32,7 +32,7 @@ def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
 
 def itinerary_node(state: State) -> Command[Literal['chatbot']]:
      
-     response = itinerary_agent(state["fetched_data"])
+     response = itinerary_agent(state["query"],state["fetched_data"])
 
      #new_lst = state["message_list"].append(response.content)
      new_lst = state["message_list"]+ [("ai", "itinerary_agent : " + response)]

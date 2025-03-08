@@ -43,8 +43,8 @@ def plan_prompt(query,text):
     """
     return PLANNER_INSTRUCTION 
 
-def itinerary_agent(fetched_data):
-    query = "Please create a travel plan for me where I'll be departing from Washington and heading to Myrtle Beach for a 3-day trip from March 13th to March 15th, 2022."
+def itinerary_agent(query,fetched_data):
+    #query = "Please create a travel plan for me where I'll be departing from Washington and heading to Myrtle Beach for a 3-day trip from March 13th to March 15th, 2022."
     message = plan_prompt(query=query, text=fetched_data)
     response = llm.invoke(message)
     return response.content
