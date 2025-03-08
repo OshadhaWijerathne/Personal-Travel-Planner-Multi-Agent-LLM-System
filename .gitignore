@@ -1,3 +1,4 @@
 .env
 Git_PAT.txt
 database/
+google_credentials/

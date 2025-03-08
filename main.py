@@ -5,7 +5,7 @@ from typing import Literal
 from langgraph.types import Command
 from agents.itinerary import itinerary_agent
 from agents.data_retrieval import data_retrieval_agent
-from agents.calendar import calendar_agent
+from agents.calendar_agent import calendar_agent
 from agents.query_checker import query_checker_module
 from config import llm  # Import the shared llm from config.py
 
@@ -56,7 +56,8 @@ def query_checker_node(state: State) -> Command[Literal['chatbot']]:
 
 def calendar_node(state: State) -> Command[Literal['chatbot']]:
 
-    result = calendar_agent()
+    print("QUERY GOING TO CALENDAR AGENT",state["message_list"][-1])
+    result = calendar_agent(str(state["message_list"][-1]))
 
     new_lst = state["message_list"]+ [("ai", "calendar_agent : " + result)]
 
@@ -87,6 +88,7 @@ Your Responsibilities:
 
 1. Greeting & Introduction: Start by greeting the user and explaining that you're here to help plan their trip. Inform them that currently you can assist them with:
    - Calendar checks
+   - Add events to user's Google calendar
    - Data retrieval for travel details (e.g., restaurants, flights, attractions)
    - Itinerary planning
 
@@ -103,7 +105,7 @@ Your Responsibilities:
    - **itinerary_agent**: Once data is gathered, this agent will create a personalized itinerary for the user.
 
 4. Agent Routing: Based on the collected information, determine which agent to route the user to:
-   - **calendar_agent**: Check for any calendar conflicts with the user’s travel dates.
+   - **calendar_agent**: Check for any calendar conflicts with the user’s travel dates and add calendar events to the google calendar.
    - **data_retrieval_agent**: Fetch the relevant travel data after the user provides their preferences and budget.
    - **itinerary_agent**: Generate the itinerary after gathering travel data.
    - **human_interrupt**: Allow the user to interact directly and make any changes to their itinerary or provide additional information.
@@ -138,8 +140,9 @@ Example Workflow:
 12. **itinerary_agent**: [Creates itinerary]
 13. **Chatbot**: "Here's your personalized itinerary! Would you like to add anything else?"
 14. **User**: "No, that's all. Thank you!"
-15. **Chatbot**: "Would you like me to add this itinerary to your Google Calendar with reminders?"
+15. **Chatbot**: "Would you like me to add this event to your Google Calendar?"
 16. **User**: "Yes, please."
+17. **Chatbot**: "Let me add this event your calendar.Event details : 2nd March - 5th March Trip to Miami from NewYork."
 17. **calendar_agent**: [Adds events to Google Calendar]
 18. **Chatbot**: "FINISH"
 """
@@ -187,7 +190,7 @@ graph = builder.compile()
 initial_state = {
     "message_list": [("user", "Hi")],
     "fetched_data": "",
-    "query":""
+    "query":"",
 }
 
 import pprint
