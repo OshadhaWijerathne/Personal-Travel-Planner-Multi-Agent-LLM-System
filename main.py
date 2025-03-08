@@ -21,10 +21,17 @@ class State(TypedDict):
 # # Creating the Agent Nodes
 
 def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
-    
-    state["fetched_data"] += str(data_retrieval_agent()) 
+    #print(state["query"])
+    response = data_retrieval_agent(state['query'])
+    print("Retrieved data:" + str(response))
 
-    result = "data retrieved which are needed for itinerary agent"
+    state["fetched_data"] += str(response) 
+
+    if not response: 
+        result = "couldn't retrieve data which are needed for itinerary agent"
+    else:
+        result = "data retrieved which are needed for itinerary agent"    
+    #result = data_retrieval_agent(state["query"])
 
     new_lst = state["message_list"]+ [("ai","data_retrieval_agent : " +  result)]
 
@@ -185,21 +192,21 @@ initial_state = {
 
 import pprint
 # Start the graph stream to trigger the flow
-for s in graph.stream(initial_state,subgraphs=True,stream_mode="values"):
+for s in graph.stream(initial_state,subgraphs=True):
         
-        print(s)
+        #print(s)
         #message_data = s[1]  # Access the second element of the tuple
         #print(f"Next action: {message_data.get('next')}")
         #print(f"Message list: {message_data.get('message_list')}")
         #pprint.pprint(f"Last Message: {message_data.get('message_list')[-1]}")
-        print("\n----\n")
-        """
+        #print("\n----\n")
+        
         for key, value in s[1].items():
-            if key in ['chatbot', 'itinerary_agent', 'data_retrieval_agent','calendar_agent','query_builder_module']:
+            if key in ['chatbot', 'itinerary_agent', 'data_retrieval_agent','calendar_agent','query_checker_module']:
                 #print(value['messages'])
                 print(key)
                 print("next_node: " + value['next'])
                 print("message: " + value['message_list'][-1][1])
         print("----")
 
-        """
+        
