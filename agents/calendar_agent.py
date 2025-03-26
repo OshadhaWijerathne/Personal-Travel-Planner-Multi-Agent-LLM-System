@@ -52,7 +52,7 @@ def calendar_agent(query):
         """Creates an event in Google Calendar. Provide event details as a dictionary with keys: "
             "'summary' (title), 'description' (details), 'start_time' (ISO 8601 format), "
             "'end_time' (ISO 8601 format), and 'timezone' (e.g., 'UTC').
-            If the user doesn't specify a year, default to the year 2025.
+            If the user doesn't specify a year, default to the year 2022.
             """
         # Ensure event_details is a dictionary
         if isinstance(event_details, str):
@@ -124,7 +124,7 @@ def calendar_agent(query):
     @tool
     def check_availability(start_date, end_date):
         """Check user's availability based on Google Calendar events for given travel dates.
-        If the user doesn't specify a year, default to the year 2025."""
+        If the user doesn't specify a year, default to the year 2022."""
         
         start_iso = format_to_iso(start_date, "start")
         end_iso =  format_to_iso(end_date, "end")
