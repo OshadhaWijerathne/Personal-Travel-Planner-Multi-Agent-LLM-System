@@ -17,6 +17,7 @@ class State(TypedDict):
     message_list : list
     fetched_data : str
     query : str
+    itinerary : str
 
 # # Creating the Agent Nodes
 
@@ -24,8 +25,6 @@ def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
     #print(state["query"])
     response = data_retrieval_agent(state['query'])
     print("Retrieved data:" + str(response))
-
-    state["fetched_data"] += str(response) 
 
     if not response: 
         result = "couldn't retrieve data which are needed for itinerary agent"
@@ -35,7 +34,7 @@ def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
 
     new_lst = state["message_list"]+ [("ai","data_retrieval_agent : " +  result)]
 
-    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst}) 
+    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst,"fetched_data":str(response)}) 
 
 def itinerary_node(state: State) -> Command[Literal['chatbot']]:
      
@@ -44,7 +43,7 @@ def itinerary_node(state: State) -> Command[Literal['chatbot']]:
      #new_lst = state["message_list"].append(response.content)
      new_lst = state["message_list"]+ [("ai", "itinerary_agent : " + response)]
 
-     return Command(goto='chatbot',update={"next":"chatbot","message_list":new_lst})
+     return Command(goto='chatbot',update={"next":"chatbot","message_list":new_lst,"itinerary":str(response)})
 
 def query_checker_node(state: State) -> Command[Literal['chatbot']]:
     
@@ -189,27 +188,25 @@ graph = builder.compile()
 # Initial state for the conversation
 initial_state = {
     "message_list": [("user", "Hi")],
-    "fetched_data": "",
     "query":"",
+    "fetched_data": "",
+    "itinerary": "",
 }
 
 import pprint
 # Start the graph stream to trigger the flow
-for s in graph.stream(initial_state,subgraphs=True):
-        
-        #print(s)
-        #message_data = s[1]  # Access the second element of the tuple
-        #print(f"Next action: {message_data.get('next')}")
-        #print(f"Message list: {message_data.get('message_list')}")
-        #pprint.pprint(f"Last Message: {message_data.get('message_list')[-1]}")
-        #print("\n----\n")
-        
-        for key, value in s[1].items():
-            if key in ['chatbot', 'itinerary_agent', 'data_retrieval_agent','calendar_agent','query_checker_module']:
-                #print(value['messages'])
-                print(key)
-                print("next_node: " + value['next'])
-                print("message: " + value['message_list'][-1][1])
-        print("----")
+for s in graph.stream(initial_state,subgraphs=True,stream_mode="values"):
 
+        if "next" in s[1]:            
+            print("message: " + s[1]['message_list'][-1][1])
+            print("next_node: " + s[1]["next"])
+            print("query:" + s[1]['query'])
+            print("fetched_data:" + s[1]["fetched_data"])
+            print("itinerary:" + s[1]["itinerary"])
+            print("----")
+            print("\n")
+            print(s[1]["next"] + "\n")
         
+        else:
+            print("chatbot \n")    
+
