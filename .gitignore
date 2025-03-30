@@ -2,3 +2,5 @@
 Git_PAT.txt
 database/
 google_credentials/
+__pycache__/
+*.pyc
