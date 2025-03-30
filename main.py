@@ -17,6 +17,7 @@ class State(TypedDict):
     message_list : list
     fetched_data : str
     query : str
+    itinerary : str
 
 # # Creating the Agent Nodes
 
@@ -24,8 +25,6 @@ def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
     #print(state["query"])
     response = data_retrieval_agent(state['query'])
     print("Retrieved data:" + str(response))
-
-    state["fetched_data"] += str(response) 
 
     if not response: 
         result = "couldn't retrieve data which are needed for itinerary agent"
@@ -35,7 +34,7 @@ def data_retrieval_node(state: State) -> Command[Literal['chatbot']]:
 
     new_lst = state["message_list"]+ [("ai","data_retrieval_agent : " +  result)]
 
-    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst}) 
+    return Command(goto='chatbot', update={"next":"chatbot","message_list":new_lst,"fetched_data":str(response)})  
 
 def itinerary_node(state: State) -> Command[Literal['chatbot']]:
      
@@ -44,7 +43,7 @@ def itinerary_node(state: State) -> Command[Literal['chatbot']]:
      #new_lst = state["message_list"].append(response.content)
      new_lst = state["message_list"]+ [("ai", "itinerary_agent : " + response)]
 
-     return Command(goto='chatbot',update={"next":"chatbot","message_list":new_lst})
+     return Command(goto='chatbot',update={"next":"chatbot","message_list":new_lst,"itinerary":str(response)})
 
 def query_checker_node(state: State) -> Command[Literal['chatbot']]:
     
@@ -56,7 +55,7 @@ def query_checker_node(state: State) -> Command[Literal['chatbot']]:
 
 def calendar_node(state: State) -> Command[Literal['chatbot']]:
 
-    print("QUERY GOING TO CALENDAR AGENT",state["message_list"][-1])
+    #print("QUERY GOING TO CALENDAR AGENT",state["message_list"][-1])
     result = calendar_agent(str(state["message_list"][-1]))
 
     new_lst = state["message_list"]+ [("ai", "calendar_agent : " + result)]
@@ -70,13 +69,15 @@ def human_interrupt(state: State) -> Command[Literal['chatbot']]:
 
     #query = state['message_list'][-1].content
 
-    user_input = input("user: ")
+    #user_input = input("user: ")
 
-    new_lst = state["message_list"]+ [("user", user_input)]
+    #new_lst = state["message_list"]+ [("user", user_input)]
     
     
 
-    return Command(goto='chatbot', update={"message_list":new_lst})
+    #return Command(goto='chatbot', update={"message_list":new_lst})
+
+    return
 
 
 ## Chatbot
@@ -160,7 +161,7 @@ def chatbot_node(state:State) -> Command[Literal['human_interrupt','query_checke
 
     response = llm.with_structured_output(Router).invoke(messages)
 
-    new_lst = state["message_list"] + [("ai", response["messages"])]
+    new_lst = state["message_list"] + [("ai", "chatbot : " + response["messages"])]
     
     goto = response["next"]
 
@@ -186,6 +187,7 @@ builder.add_node("query_checker_module",query_checker_node)
 # Compile the graph
 graph = builder.compile()
 
+"""
 # Initial state for the conversation
 initial_state = {
     "message_list": [("user", "Hi")],
@@ -212,4 +214,174 @@ for s in graph.stream(initial_state,subgraphs=True):
                 print("message: " + value['message_list'][-1][1])
         print("----")
 
-        
+"""
+
+##########################################################################################################################################
+######################################################    FastAPI Backend    #######################################################################
+##########################################################################################################################################
+
+
+
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse,Response
+from typing import AsyncIterator
+from pydantic import BaseModel
+import os
+import json
+
+
+app = FastAPI()
+
+class ChatInput(BaseModel):
+    message: str
+
+@app.post("/chat")
+def chat(human_input:ChatInput):
+    # Check if the file exists
+    if os.path.exists("graph_state.json"):
+        with open("graph_state.json", "r") as json_file:
+            current_state = json.load(json_file)
+    else:
+        # If the file doesn't exist, create a new one with default values
+        current_state = {
+            "message_list": [("user", "Hi")],
+            "query":"",
+            "fetched_data": "",
+            "itinerary": "",
+        }
+        with open("graph_state.json", "w") as json_file:
+            json.dump(current_state, json_file)
+    # with open("graph_state.json", "r") as json_file:
+    #   current_state =  json.load(json_file)
+    current_state["next"] = 'chatbot'
+    current_state["message_list"].append(['user',human_input.message])   
+    initial_state = current_state
+
+    # Start the graph stream
+    """
+    for s in graph.stream(initial_state, subgraphs=True,interrupt_before=["human_interrupt"]):
+        for key, value in s[1].items():
+            if key in ['chatbot', 'itinerary_agent', 'data_retrieval_agent','calendar_agent','query_checker_module']:
+                current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                with open("graph_state.json", "w") as json_file:
+                    json.dump(current_state, json_file, indent=4) 
+                #print(value['messages'])
+                print(key)
+                print("next_node: " + value['next'])
+                print("message: " + value['message_list'][-1][1])
+                
+            if key == 'human_interrupt':
+                current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                with open("graph_state.json", "w") as json_file:
+                    json.dump(current_state, json_file, indent=4) 
+                return current_state["message_list"]
+    return current_state["message_list"]
+    """
+    for s in graph.stream(initial_state,subgraphs=True,interrupt_before=["human_interrupt"],stream_mode="values"):
+        print(s[1])
+        if "message_list" in s[1] and s[1]['message_list'][-1][0] == "ai":
+            current_state["message_list"].append(["ai",s[1]['message_list'][-1][1]])
+            current_state["query"] = s[1]["query"]
+            current_state["fetched_data"] = s[1]["fetched_data"]
+            current_state["itinerary"] = s[1]["itinerary"]
+            with open("graph_state.json", "w") as json_file:
+                json.dump(current_state, json_file, indent=4) 
+            
+            print("message: " + s[1]['message_list'][-1][1])
+            print("next_node: " + s[1]["next"])
+            print("query:" + s[1]['query'])
+            print("fetched_data:" + s[1]["fetched_data"])
+            print("itinerary:" + s[1]["itinerary"])
+            print("----")
+            print("\n")
+            print(s[1]["next"] + "\n")        
+    return current_state["message_list"]      
+
+################################### chat streaming ###############################################
+
+@app.post("/chat_stream")
+async def chat_stream(human_input:ChatInput):
+    # Check if the file exists
+    #return {"reply": f"You said: {human_input.message}"}
+    if os.path.exists("graph_state.json"):
+        with open("graph_state.json", "r") as json_file:
+            current_state = json.load(json_file)
+    else:
+        # If the file doesn't exist, create a new one with default values
+        current_state = {
+            "message_list": [("user", "Hi")],
+            "query":"",
+            "fetched_data": "",
+            "itinerary": "",
+        }
+        with open("graph_state.json", "w") as json_file:
+            json.dump(current_state, json_file)
+    # with open("graph_state.json", "r") as json_file:
+    #   current_state =  json.load(json_file)
+    current_state["next"] = 'chatbot'
+    current_state["message_list"].append(['user',human_input.message])   
+    initial_state = current_state
+    #return {"Message":"Hi from backend"} 
+
+    # Start the graph stream
+
+    """async def message_stream() -> AsyncIterator[str]:
+        # Start the graph stream
+        for s in graph.stream(initial_state, subgraphs=True, interrupt_before=["human_interrupt"]):
+            for key, value in s[1].items():
+                if key in ['chatbot', 'itinerary_agent', 'data_retrieval_agent','calendar_agent','query_checker_module']:
+                    current_state["message_list"].append(["ai", value['message_list'][-1][1]])
+                    #current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                    #current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                    with open("graph_state.json", "w") as json_file:
+                        json.dump(current_state, json_file, indent=4) 
+
+                    print(key)
+                    print("next_node: " + value['next'])
+                    print("message: " + value['message_list'][-1][1])
+                    print(value)
+                    #print("Query is" + value["query"])
+                    #print("fetched data is " + value["fetched_data"])
+
+                    if key == "chatbot":
+                        yield "chatbot : " + value['message_list'][-1][1] + "\n"  # Yielding response to stream
+                    else:
+                        yield value['message_list'][-1][1] + "\n"  # Yielding response to stream
+                
+                if key == 'human_interrupt':
+                    current_state["message_list"].append(["ai", value['message_list'][-1][1]])
+                    #current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                    #current_state["message_list"].append(["ai",value['message_list'][-1][1]])
+                    with open("graph_state.json", "w") as json_file:
+                        json.dump(current_state, json_file, indent=4)
+
+                    yield value['message_list'][-1][1] + "\n"  # Yielding interrupt message
+
+    return StreamingResponse(message_stream(), media_type="text/plain")"""
+
+    async def message_stream() -> AsyncIterator[str]:
+        for s in graph.stream(initial_state, subgraphs=True, interrupt_before=["human_interrupt"], stream_mode="values"):
+            if "message_list" in s[1] and s[1]['message_list'][-1][0] == "ai":
+                current_state["message_list"].append(["ai",s[1]['message_list'][-1][1]])
+                current_state["query"] = s[1]["query"]
+                current_state["fetched_data"] = s[1]["fetched_data"]
+                current_state["itinerary"] = s[1]["itinerary"]
+
+                with open("graph_state.json", "w") as json_file:
+                    json.dump(current_state, json_file, indent=4)
+
+                print("message: " + s[1]['message_list'][-1][1])
+                print("next_node: " + s[1].get("next", ""))
+                print("query: " + current_state["query"])
+                print("fetched_data: " + current_state["fetched_data"])
+                print("itinerary: " + current_state["itinerary"])
+                print("----\n")
+                
+                yield s[1]['message_list'][-1][1] + "\n"
+
+    return StreamingResponse(message_stream(), media_type="text/plain")
+
