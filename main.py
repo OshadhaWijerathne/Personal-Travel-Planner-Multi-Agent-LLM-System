@@ -144,8 +144,8 @@ Example Workflow:
 15. **Chatbot**: "Would you like me to add this event to your Google Calendar?"
 16. **User**: "Yes, please."
 17. **Chatbot**: "Let me add this event your calendar.Event details : 2nd March - 5th March Trip to Miami from NewYork."
-17. **calendar_agent**: [Adds events to Google Calendar]
-18. **Chatbot**: "FINISH"
+18. **calendar_agent**: [Adds events to Google Calendar]
+19. **Chatbot**: "FINISH"
 """
 
 class Router(TypedDict):
@@ -229,6 +229,9 @@ from pydantic import BaseModel
 import os
 import json
 
+# When the FastAPI app run for the first time remove the graph_state.json file 
+if os.path.exists("graph_state.json"):
+    os.remove("graph_state.json")
 
 app = FastAPI()
 
